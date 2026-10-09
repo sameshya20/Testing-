@@ -37,6 +37,7 @@ export interface Area {
   description?: string;
   application_id?: number;
   parent_id?: number | null;
+  path?: string;
 }
 
 export interface UserStory {
@@ -45,7 +46,8 @@ export interface UserStory {
   description?: string;
   state?: string;
   assigned_to?: string;
-  area_id: number;
+  area_id?: number;
+  area_path?: string;
 }
 
 export interface AcceptanceCriteriaRead {
@@ -63,6 +65,8 @@ export interface DevOpsWorkItem {
   acceptance_criteria?: string;
   state?: string;
   assigned_to?: string;
+  area_path?: string;
+  iteration_path?: string;
   tags?: string[];
 }
 
@@ -78,6 +82,10 @@ export interface TestCase {
   id: string;
   requirement_ref: string;
   user_story?: string;
+  azure_work_item_id?: string;
+  azure_test_case_id?: number;
+  sync_status?: 'Not Synced' | 'Synced' | 'Updated' | 'Sync Failed' | string;
+  sync_message?: string;
   acceptance_criteria?: string;
   application_page?: string;
   application_link?: string;
@@ -127,4 +135,60 @@ export interface TestCaseGenerationResponse {
   analysis_summary: string;
   url_context_analyzed: boolean;
   url_analysis_message?: string;
+}
+
+// Azure DevOps Real Integration Types
+export interface AzureDevOpsProjectItem {
+  id: string;
+  name: string;
+  description?: string;
+  state?: string;
+}
+
+export interface AzureDevOpsConnectRequest {
+  organization?: string;
+  project?: string;
+  pat?: string;
+}
+
+export interface AzureDevOpsConnectResponse {
+  connected: boolean;
+  organization: string;
+  project?: string;
+  message: string;
+  projects: AzureDevOpsProjectItem[];
+  mode?: 'mock' | 'real' | string;
+}
+
+export interface AzureDevOpsConfigResponse {
+  organization: string;
+  project: string;
+  is_pat_configured: boolean;
+  connected: boolean;
+  mode?: 'mock' | 'real' | string;
+}
+
+export interface AzureDevOpsAreaItem {
+  id: number;
+  name: string;
+  path: string;
+  has_children?: boolean;
+  children?: AzureDevOpsAreaItem[];
+  parent_id?: number | null;
+}
+
+export interface AzureDevOpsSyncRequest {
+  test_cases: TestCase[] | any[];
+  work_item_id?: string;
+  area_path?: string;
+  project?: string;
+}
+
+export interface AzureDevOpsSyncResponse {
+  success: boolean;
+  message: string;
+  synced_count: number;
+  updated_count: number;
+  failed_count: number;
+  test_cases: TestCase[];
 }

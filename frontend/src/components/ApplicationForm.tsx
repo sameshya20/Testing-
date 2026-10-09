@@ -5,16 +5,30 @@ import type {
   AcceptanceCriteriaRead,
   Application,
   TestCaseGenerationRequest,
-  ApplicationLinkPayload
+  ApplicationLinkPayload,
+  DevOpsWorkItem
 } from '../types';
 import {
   fetchAreas,
   fetchUserStoriesByAreas,
   fetchAcceptanceCriteriaByStories,
-  fetchApplications
+  fetchApplications,
+  fetchAzureDevOpsAreas,
+  fetchAzureDevOpsWorkItems,
+  fetchAzureDevOpsWorkItem
 } from '../services/api';
 import { AreaSelector } from './AreaSelector';
-import { Loader2, Plus, X, Edit2, Globe, AlertCircle, FileText, CheckSquare } from 'lucide-react';
+import {
+  Loader2,
+  Plus,
+  X,
+  Edit2,
+  Globe,
+  AlertCircle,
+  User,
+  FolderGit2,
+  Calendar
+} from 'lucide-react';
 
 interface SelectedLinkItem {
   id: string;
@@ -25,6 +39,9 @@ interface SelectedLinkItem {
 interface ApplicationFormProps {
   onSubmit: (payload: TestCaseGenerationRequest) => void;
   isLoading: boolean;
+  isAdoConnected?: boolean;
+  adoProject?: string | null;
+  adoOrg?: string | null;
 }
 
 function normalizeUrl(url: string): string {
@@ -47,26 +64,35 @@ function isBlockedScheme(url: string): boolean {
 
 const DEFAULT_APPLICATION_LINK = 'https://www.amazon.in/';
 
-export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLoading }) => {
+export const ApplicationForm: React.FC<ApplicationFormProps> = ({
+  onSubmit,
+  isLoading,
+  isAdoConnected = false,
+  adoProject = null
+}) => {
   // Database Data States
   const [areas, setAreas] = useState<Area[]>([]);
   const [userStories, setUserStories] = useState<UserStory[]>([]);
   const [acceptanceCriteriaList, setAcceptanceCriteriaList] = useState<AcceptanceCriteriaRead[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
 
-  // Selection States (Support multiple service selections & multiple user stories)
+  // Azure DevOps Work Items state
+  const [adoWorkItems, setAdoWorkItems] = useState<DevOpsWorkItem[]>([]);
+  const [activeStoryDetails, setActiveStoryDetails] = useState<DevOpsWorkItem | null>(null);
+  const [loadingStoryDetails, setLoadingStoryDetails] = useState<boolean>(false);
+
+  // Selection States
   const [selectedAreaIds, setSelectedAreaIds] = useState<number[]>([]);
   const [selectedStoryIds, setSelectedStoryIds] = useState<string[]>([]);
   const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([]);
 
-  // Track previously selected stories to only auto-select criteria for newly added stories
   const previousStoryIdsRef = useRef<string[]>([]);
 
-  // Application Link State (Default set to https://www.amazon.in/)
+  // Application Link State
   const [selectedLinks, setSelectedLinks] = useState<SelectedLinkItem[]>([
     {
       id: 'default-amazon-link',
-      name: 'Amazon India Storefront',
+      name: 'Amazon Storefront',
       url: DEFAULT_APPLICATION_LINK
     }
   ]);
@@ -85,26 +111,48 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
   const [loadingCriteria, setLoadingCriteria] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // 1. Initial Load: Fetch Areas from Database
+  // 1. Initial Load: Fetch Areas from Azure DevOps or Database
   useEffect(() => {
     async function loadAreasAndApps() {
       try {
         setLoadingAreas(true);
         setValidationError(null);
-        const [areaList, appList] = await Promise.all([
-          fetchAreas().catch(() => []),
-          fetchApplications().catch(() => [])
-        ]);
+        setSelectedAreaIds([]);
+        setUserStories([]);
+        setSelectedStoryIds([]);
+        setAcceptanceCriteriaList([]);
+        setSelectedCriteriaIds([]);
+        setActiveStoryDetails(null);
+
+        let areaList: Area[] = [];
+        let appList: Application[] = [];
+
+        if (isAdoConnected) {
+          try {
+            areaList = await fetchAzureDevOpsAreas(adoProject || undefined);
+          } catch {
+            areaList = await fetchAreas().catch(() => []);
+          }
+          appList = await fetchApplications().catch(() => []);
+        } else {
+          const [dbAreas, dbApps] = await Promise.all([
+            fetchAreas().catch(() => []),
+            fetchApplications().catch(() => [])
+          ]);
+          areaList = dbAreas;
+          appList = dbApps;
+        }
+
         setAreas(areaList);
         setApplications(appList);
-      } catch (err: any) {
+      } catch {
         setValidationError('Unable to load area information. Please try again.');
       } finally {
         setLoadingAreas(false);
       }
     }
     loadAreasAndApps();
-  }, []);
+  }, [isAdoConnected, adoProject]);
 
   // 2. Load User Stories when selected Area(s) change
   useEffect(() => {
@@ -114,6 +162,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
       setSelectedStoryIds([]);
       setAcceptanceCriteriaList([]);
       setSelectedCriteriaIds([]);
+      setActiveStoryDetails(null);
       return;
     }
 
@@ -124,23 +173,81 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
         setSelectedStoryIds([]);
         setAcceptanceCriteriaList([]);
         setSelectedCriteriaIds([]);
+        setActiveStoryDetails(null);
         setValidationError(null);
+
+        if (isAdoConnected) {
+          const selectedAreaObj = areas.find(a => a.id === selectedAreaIds[0]);
+          const areaPath = selectedAreaObj?.path || selectedAreaObj?.name;
+          const adoItems = await fetchAzureDevOpsWorkItems(areaPath, adoProject || undefined);
+
+          if (adoItems && adoItems.length > 0) {
+            setAdoWorkItems(adoItems);
+            const mappedStories: UserStory[] = adoItems.map(item => ({
+              id: item.id.replace(/^#/, ''),
+              title: item.title,
+              description: item.description || '',
+              application_id: selectedAreaObj?.application_id || 1,
+              area_id: selectedAreaObj?.id || 1,
+              state: item.state || 'Active'
+            }));
+            setUserStories(mappedStories);
+
+            const firstId = mappedStories[0].id;
+            setSelectedStoryIds([firstId]);
+            setActiveStoryDetails(adoItems[0]);
+            return;
+          }
+        }
 
         const stories = await fetchUserStoriesByAreas(selectedAreaIds);
         setUserStories(stories);
 
         if (stories.length > 0) {
-          // Pre-select the first story by default (single-story workflow out of the box)
           setSelectedStoryIds([stories[0].id]);
         }
-      } catch (err) {
-        setUserStories([]);
+      } catch {
+        try {
+          const stories = await fetchUserStoriesByAreas(selectedAreaIds);
+          setUserStories(stories);
+          if (stories.length > 0) {
+            setSelectedStoryIds([stories[0].id]);
+          }
+        } catch {
+          setUserStories([]);
+        }
       } finally {
         setLoadingStories(false);
       }
     }
     loadStories();
-  }, [selectedAreaIds]);
+  }, [selectedAreaIds, isAdoConnected, adoProject, areas]);
+
+  // Load complete Azure DevOps Story details on story selection
+  useEffect(() => {
+    if (!isAdoConnected || selectedStoryIds.length === 0) {
+      if (!isAdoConnected) setActiveStoryDetails(null);
+      return;
+    }
+
+    const currentId = selectedStoryIds[0];
+    const cached = adoWorkItems.find(w => w.id.replace(/^#/, '') === currentId.replace(/^#/, ''));
+    if (cached && cached.description && cached.acceptance_criteria) {
+      setActiveStoryDetails(cached);
+    } else {
+      setLoadingStoryDetails(true);
+      fetchAzureDevOpsWorkItem(currentId, adoProject || undefined)
+        .then(item => {
+          setActiveStoryDetails(item);
+        })
+        .catch(() => {
+          if (cached) setActiveStoryDetails(cached);
+        })
+        .finally(() => {
+          setLoadingStoryDetails(false);
+        });
+    }
+  }, [selectedStoryIds, isAdoConnected, adoProject, adoWorkItems]);
 
   // 3. Load Acceptance Criteria when selected User Stories change
   useEffect(() => {
@@ -160,10 +267,31 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
         const criteria = await fetchAcceptanceCriteriaByStories(selectedStoryIds);
         if (!isCurrent) return;
 
-        // Deduplicate criteria
+        let effectiveCriteria = criteria;
+        if (effectiveCriteria.length === 0 && isAdoConnected) {
+          const fallbackAcs: AcceptanceCriteriaRead[] = [];
+          selectedStoryIds.forEach(sid => {
+            const item = adoWorkItems.find(w => w.id.replace(/^#/, '') === sid.replace(/^#/, ''));
+            if (item && item.acceptance_criteria) {
+              const lines = item.acceptance_criteria.split('\n').map(l => l.trim()).filter(Boolean);
+              lines.forEach((line, idx) => {
+                fallbackAcs.push({
+                  id: `${sid}-AC-${idx + 1 < 10 ? '0' : ''}${idx + 1}`,
+                  user_story_id: sid,
+                  criteria_number: idx + 1,
+                  text: line
+                });
+              });
+            }
+          });
+          if (fallbackAcs.length > 0) {
+            effectiveCriteria = fallbackAcs;
+          }
+        }
+
         const uniqueCriteria: AcceptanceCriteriaRead[] = [];
         const seenIds = new Set<string>();
-        for (const c of criteria) {
+        for (const c of effectiveCriteria) {
           const upperId = c.id.toUpperCase();
           if (!seenIds.has(upperId)) {
             seenIds.add(upperId);
@@ -172,20 +300,16 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
         }
         setAcceptanceCriteriaList(uniqueCriteria);
 
-        // Compute newly added stories compared to previously tracked selection
         const prevUpper = previousStoryIdsRef.current.map(s => s.toUpperCase());
         const newlyAddedStories = selectedStoryIds.filter(
           id => !prevUpper.includes(id.toUpperCase())
         );
         previousStoryIdsRef.current = selectedStoryIds;
 
-        // Pre-select criteria for newly added stories while preserving existing user selections
         setSelectedCriteriaIds(prev => {
-          // Keep existing selections that belong to the current unique criteria
           const validPrev = prev.filter(id =>
             uniqueCriteria.some(c => c.id.toUpperCase() === id.toUpperCase())
           );
-          // Auto-select criteria belonging to newly added stories
           const newItems = uniqueCriteria
             .filter(c =>
               newlyAddedStories.some(sid => sid.toUpperCase() === c.user_story_id.toUpperCase()) &&
@@ -194,7 +318,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
             .map(c => c.id);
           return Array.from(new Set([...validPrev, ...newItems]));
         });
-      } catch (err) {
+      } catch {
         if (!isCurrent) return;
         setAcceptanceCriteriaList([]);
         setSelectedCriteriaIds([]);
@@ -208,11 +332,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     return () => {
       isCurrent = false;
     };
-  }, [selectedStoryIds]);
+  }, [selectedStoryIds, isAdoConnected, adoWorkItems]);
 
   const selectedArea = selectedAreaIds.length > 0 ? areas.find(a => a.id === selectedAreaIds[0]) : null;
 
-  // Handlers for User Stories selection
   const handleToggleStory = (storyId: string) => {
     setValidationError(null);
     setSelectedStoryIds(prev =>
@@ -230,7 +353,6 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     setSelectedStoryIds([]);
   };
 
-  // Handlers for Acceptance Criteria selection
   const handleToggleCriteria = (id: string) => {
     setValidationError(null);
     setSelectedCriteriaIds(prev =>
@@ -258,7 +380,6 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     }
   };
 
-  // Group Acceptance Criteria by User Story
   const groupedCriteria = React.useMemo(() => {
     const groups: {
       storyId: string;
@@ -281,7 +402,6 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
       }
     });
 
-    // Fallback: criteria whose storyId is not in selectedStoryIds
     const addedIds = new Set(groups.map(g => g.storyId.toUpperCase()));
     const remaining = acceptanceCriteriaList.filter(
       c => !addedIds.has(c.user_story_id.toUpperCase())
@@ -306,7 +426,6 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     return groups;
   }, [selectedStoryIds, userStories, acceptanceCriteriaList]);
 
-  // Add custom manual application link
   const handleAddCustomLink = () => {
     setLinkValidationError(null);
     if (!newLinkUrl.trim()) {
@@ -322,7 +441,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     const normUrl = normalizeUrl(newLinkUrl);
     const duplicate = selectedLinks.find(l => normalizeUrl(l.url) === normUrl);
     if (duplicate) {
-      setLinkValidationError('This application link has already been added.');
+      setLinkValidationError('This link has already been added.');
       return;
     }
 
@@ -331,7 +450,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
       : `Application Link ${selectedLinks.length + 1}`;
 
     const newItem: SelectedLinkItem = {
-      id: `link-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: `link-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: finalName,
       url: newLinkUrl.trim()
     };
@@ -388,30 +507,25 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
     setEditingLinkId(null);
   };
 
-  // Form Submission Handler with Strict Validations
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
 
-    // Validation 1: Area / Service Selection
     if (selectedAreaIds.length === 0) {
       setValidationError('Please select an area to continue.');
       return;
     }
 
-    // Validation 2: User Story Selection (Single or Multiple)
     if (selectedStoryIds.length === 0) {
       setValidationError('Please select at least one user story to continue.');
       return;
     }
 
-    // Validation 3: Acceptance Criteria Selection (CRITICAL REQUIRED BEHAVIOR)
     if (selectedCriteriaIds.length === 0) {
       setValidationError('No acceptance criteria selected. Please select at least one acceptance criterion to continue.');
       return;
     }
 
-    // Resolve underlying application_id from selected Area or default app
     let appId = selectedArea?.application_id;
     if (!appId && applications.length > 0) {
       appId = applications[0].id;
@@ -442,82 +556,80 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
   };
 
   return (
-    <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-2xl space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="bg-slate-900 rounded-lg border border-slate-800 p-5 space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Global Validation Alert Banner */}
+        {/* Global Validation Error */}
         {validationError && (
-          <div className="p-4 rounded-xl bg-red-950/80 border border-red-800/80 flex items-center space-x-3 text-red-200 text-sm font-medium animate-pulse shadow-lg">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <div className="p-3 rounded-md bg-red-950/60 border border-red-800/60 flex items-center space-x-2.5 text-red-300 text-xs font-medium">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span>{validationError}</span>
           </div>
         )}
 
-        {/* STEP 1: SELECT AREA / SERVICE (AZURE DEVOPS-STYLE HIERARCHY) */}
-        <AreaSelector
-          areas={areas}
-          selectedAreaIds={selectedAreaIds}
-          onSelectAreas={(ids) => {
-            setSelectedAreaIds(ids);
-            setValidationError(null);
-          }}
-          isLoading={loadingAreas}
-        />
+        {/* 1. AREA SELECTION */}
+        <div>
+          <AreaSelector
+            areas={areas}
+            selectedAreaIds={selectedAreaIds}
+            onSelectAreas={(ids) => {
+              setSelectedAreaIds(ids);
+              setValidationError(null);
+            }}
+            isLoading={loadingAreas}
+          />
+        </div>
 
-        {/* STEP 2: DISPLAY & SELECT USER STORIES */}
-        <div className="space-y-2.5 pt-2 border-t border-slate-800/60">
+        {/* 2. USER STORIES */}
+        <div className="space-y-2 pt-3 border-t border-slate-800">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm">
-              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xs">
-                2
-              </div>
-              <FileText className="w-4 h-4 text-blue-400" />
-              <span>User Stories</span>
+            <div className="flex items-center space-x-2">
+              <label className="text-xs font-semibold text-slate-200">User Stories</label>
+              {isAdoConnected && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/60">
+                  Azure DevOps
+                </span>
+              )}
             </div>
 
             {userStories.length > 0 && (
-              <div className="flex items-center space-x-3">
-                <span id="selected-stories-count" className="text-xs text-blue-400 font-mono font-medium">
-                  {selectedStoryIds.length} User Stor{selectedStoryIds.length === 1 ? 'y' : 'ies'} selected
+              <div className="flex items-center space-x-2 text-xs">
+                <span id="selected-stories-count" className="text-slate-400 font-mono">
+                  {selectedStoryIds.length} of {userStories.length} selected
                 </span>
-                <span className="text-slate-600 text-xs">|</span>
+                <span className="text-slate-700">|</span>
                 <button
                   type="button"
                   id="select-all-stories-btn"
                   onClick={handleSelectAllStories}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors cursor-pointer"
+                  className="text-blue-400 hover:text-blue-300 transition-colors"
                 >
                   Select All
                 </button>
-                <span className="text-slate-600 text-xs">·</span>
+                <span className="text-slate-700">·</span>
                 <button
                   type="button"
                   id="deselect-all-stories-btn"
                   onClick={handleDeselectAllStories}
-                  className="text-xs text-slate-400 hover:text-slate-200 font-medium transition-colors cursor-pointer"
+                  className="text-slate-400 hover:text-slate-200 transition-colors"
                 >
-                  Deselect All
+                  Clear
                 </button>
               </div>
             )}
           </div>
 
           {loadingStories ? (
-            <div className="flex items-center space-x-2.5 py-4 text-slate-400 text-xs">
+            <div className="flex items-center space-x-2 py-3 text-slate-400 text-xs">
               <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
               <span>Loading user stories...</span>
             </div>
           ) : userStories.length === 0 ? (
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 text-xs italic">
-              Please select an area to view available user stories.
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded text-slate-500 text-xs">
+              Select an area to view user stories.
             </div>
           ) : (
-            /* Azure DevOps Tree / Work Item Style Selection */
-            <div className="bg-slate-950 border border-slate-800 rounded-lg divide-y divide-slate-800/60 overflow-hidden">
-              <div className="bg-slate-900/60 px-4 py-2 text-[11px] font-semibold text-slate-400 tracking-wider uppercase flex items-center justify-between">
-                <span>Area: {selectedArea?.name || 'Selected Area'}</span>
-                <span className="text-[10px] text-slate-500 font-normal">Select one or more user stories</span>
-              </div>
+            <div className="bg-slate-950 border border-slate-800 rounded divide-y divide-slate-800/80 max-h-56 overflow-y-auto">
               {userStories.map((story) => {
                 const isSelected = selectedStoryIds.includes(story.id);
                 return (
@@ -525,27 +637,25 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
                     key={story.id}
                     id={`story-row-${story.id}`}
                     onClick={() => handleToggleStory(story.id)}
-                    className={`w-full text-left px-4 py-3 transition-all flex items-center justify-between cursor-pointer group ${
+                    className={`px-3 py-2 text-xs flex items-center justify-between cursor-pointer transition-colors ${
                       isSelected
-                        ? 'bg-blue-950/40 border-l-4 border-blue-500 text-blue-100 font-medium'
+                        ? 'bg-blue-950/40 text-blue-100'
                         : 'hover:bg-slate-900/60 text-slate-300'
                     }`}
                   >
-                    <div className="flex items-center space-x-3 min-w-0 flex-1 mr-3">
-                      <span className="text-slate-500 font-mono text-xs shrink-0">├──</span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold font-mono shrink-0 ${
-                        isSelected
-                          ? 'bg-blue-900/80 border border-blue-600 text-blue-200'
-                          : 'bg-slate-800 border border-slate-700 text-slate-400'
-                      }`}>
-                        {story.id}
+                    <div className="flex items-center space-x-2.5 min-w-0 flex-1 mr-2">
+                      <span className="font-mono font-semibold text-blue-400 shrink-0">
+                        #{story.id.replace(/^#/, '')}
                       </span>
-                      <span className="text-xs font-medium truncate">
-                        {story.title}
-                      </span>
+                      <span className="truncate">{story.title}</span>
                     </div>
 
                     <div className="flex items-center space-x-2 shrink-0">
+                      {story.state && (
+                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-800 text-slate-400 border border-slate-700">
+                          {story.state}
+                        </span>
+                      )}
                       <input
                         id={`story-checkbox-${story.id}`}
                         type="checkbox"
@@ -554,13 +664,8 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
                           e.stopPropagation();
                           handleToggleStory(story.id);
                         }}
-                        className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-blue-500 h-4 w-4 cursor-pointer"
+                        className="rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
                       />
-                      {isSelected && (
-                        <span className="text-[11px] text-blue-400 font-semibold font-mono hidden sm:inline">
-                          Selected
-                        </span>
-                      )}
                     </div>
                   </div>
                 );
@@ -569,82 +674,105 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
           )}
         </div>
 
-        {/* STEP 3: DISPLAY & SELECT ACCEPTANCE CRITERIA */}
-        <div className="space-y-2.5 pt-2 border-t border-slate-800/60">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm">
-              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xs">
-                3
+        {/* WORK ITEM DETAILS DRAWER (IF CONNECTED & SELECTED) */}
+        {isAdoConnected && (activeStoryDetails || loadingStoryDetails) && (
+          <div className="bg-slate-950 border border-slate-800 rounded p-3 space-y-2 text-xs">
+            {loadingStoryDetails ? (
+              <div className="flex items-center space-x-2 py-1 text-slate-400 text-xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                <span>Loading requirement details...</span>
               </div>
-              <CheckSquare className="w-4 h-4 text-blue-400" />
-              <span>Acceptance Criteria</span>
-            </div>
+            ) : activeStoryDetails ? (
+              <>
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-mono font-bold text-blue-400">
+                      #{activeStoryDetails.id.replace(/^#/, '')}
+                    </span>
+                    <span className="font-medium text-white truncate max-w-md">
+                      {activeStoryDetails.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {activeStoryDetails.state && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                        {activeStoryDetails.state}
+                      </span>
+                    )}
+                    {activeStoryDetails.assigned_to && (
+                      <span className="text-slate-400 text-[11px] flex items-center space-x-1">
+                        <User className="w-3 h-3 text-slate-500" />
+                        <span>{activeStoryDetails.assigned_to}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-400">
+                  {activeStoryDetails.area_path && (
+                    <div className="flex items-center space-x-1.5 truncate">
+                      <FolderGit2 className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="text-slate-500">Area:</span>
+                      <span className="text-slate-300 font-mono truncate">{activeStoryDetails.area_path}</span>
+                    </div>
+                  )}
+                  {activeStoryDetails.iteration_path && (
+                    <div className="flex items-center space-x-1.5 truncate">
+                      <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="text-slate-500">Iteration:</span>
+                      <span className="text-slate-300 font-mono truncate">{activeStoryDetails.iteration_path}</span>
+                    </div>
+                  )}
+                </div>
+
+                {activeStoryDetails.description && (
+                  <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800/80 text-slate-300 text-xs leading-relaxed max-h-28 overflow-y-auto whitespace-pre-line">
+                    {activeStoryDetails.description}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {/* 3. ACCEPTANCE CRITERIA */}
+        <div className="space-y-2 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <label className="text-xs font-semibold text-slate-200">Acceptance Criteria</label>
 
             {acceptanceCriteriaList.length > 0 && (
-              <div className="flex items-center space-x-3">
-                <span id="selected-criteria-count" className="text-xs text-emerald-400 font-mono font-medium">
+              <div className="flex items-center space-x-2 text-xs">
+                <span id="selected-criteria-count" className="text-slate-400 font-mono">
                   {selectedCriteriaIds.length} of {acceptanceCriteriaList.length} selected
                 </span>
-                <span className="text-slate-600 text-xs">|</span>
+                <span className="text-slate-700">|</span>
                 <button
                   type="button"
                   id="select-all-criteria-btn"
                   onClick={handleSelectAllCriteria}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors cursor-pointer"
+                  className="text-blue-400 hover:text-blue-300 transition-colors"
                 >
-                  {selectedCriteriaIds.length === acceptanceCriteriaList.length ? 'Deselect All' : 'Select All'}
+                  {selectedCriteriaIds.length === acceptanceCriteriaList.length ? 'Clear All' : 'Select All'}
                 </button>
               </div>
             )}
           </div>
 
-          {selectedStoryIds.length === 1 && (
-            <div className="text-xs text-slate-300 bg-slate-950/80 px-3.5 py-2 rounded-lg border border-slate-800/80 font-medium flex items-center justify-between">
-              <div>
-                User Story: <span className="font-bold text-blue-400">{selectedStoryIds[0]}</span>
-                {userStories.find(s => s.id === selectedStoryIds[0]) ? (
-                  <span> – {userStories.find(s => s.id === selectedStoryIds[0])?.title}</span>
-                ) : null}
-              </div>
-              <span className="text-[11px] text-slate-400 font-mono">
-                {acceptanceCriteriaList.length} criteria
-              </span>
-            </div>
-          )}
-
-          {selectedStoryIds.length > 1 && (
-            <div className="text-xs text-slate-300 bg-slate-950/80 px-3.5 py-2 rounded-lg border border-slate-800/80 font-medium flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center space-x-2">
-                <span className="text-slate-400">Selected User Stories ({selectedStoryIds.length}):</span>
-                <div className="flex flex-wrap gap-1">
-                  {selectedStoryIds.map(id => (
-                    <span key={id} className="px-1.5 py-0.5 rounded bg-blue-950 border border-blue-700/80 text-blue-300 font-mono text-[11px] font-bold">
-                      {id}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <span className="text-[11px] text-slate-400 font-mono">
-                {acceptanceCriteriaList.length} total criteria across {selectedStoryIds.length} stories
-              </span>
-            </div>
-          )}
-
           {loadingCriteria ? (
-            <div className="flex items-center space-x-2.5 py-4 text-slate-400 text-xs">
+            <div className="flex items-center space-x-2 py-3 text-slate-400 text-xs">
               <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
               <span>Loading acceptance criteria...</span>
             </div>
           ) : selectedStoryIds.length === 0 ? (
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 text-xs italic">
-              Please select at least one user story to view its acceptance criteria.
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded text-slate-500 text-xs">
+              Select a user story to view acceptance criteria.
             </div>
           ) : acceptanceCriteriaList.length === 0 ? (
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 text-xs italic">
-              No acceptance criteria found for the selected user stories.
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded text-slate-500 text-xs">
+              No acceptance criteria found for the selected user story.
             </div>
           ) : (
-            <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {groupedCriteria.map((group) => {
                 const groupSelectedCount = group.criteria.filter(c => selectedCriteriaIds.includes(c.id)).length;
                 const isAllGroupSelected = groupSelectedCount === group.criteria.length;
@@ -653,51 +781,47 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
                   <div
                     key={group.storyId}
                     id={`criteria-group-${group.storyId}`}
-                    className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-sm"
+                    className="bg-slate-950 border border-slate-800 rounded overflow-hidden"
                   >
-                    {/* Story Group Header */}
-                    <div className="bg-slate-900/90 px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+                    <div className="bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
                       <div className="flex items-center space-x-2 min-w-0 flex-1 mr-2">
-                        <span className="font-bold text-blue-400 font-mono text-xs px-2 py-0.5 rounded bg-blue-950/80 border border-blue-800/80 shrink-0">
-                          {group.storyId}
+                        <span className="font-mono font-semibold text-blue-400">
+                          #{group.storyId}
                         </span>
-                        <span className="text-slate-400 text-xs shrink-0">–</span>
-                        <span className="font-semibold text-slate-200 text-xs truncate">
+                        <span className="text-slate-300 truncate font-medium">
                           {group.storyTitle}
                         </span>
                       </div>
-
-                      <div className="flex items-center space-x-2.5 shrink-0">
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {groupSelectedCount}/{group.criteria.length} selected
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <span className="text-slate-400 text-[11px] font-mono">
+                          {groupSelectedCount}/{group.criteria.length}
                         </span>
                         <button
                           type="button"
                           id={`toggle-group-btn-${group.storyId}`}
                           onClick={() => handleToggleGroupCriteria(group.criteria)}
-                          className="text-[11px] text-blue-400 hover:text-blue-300 font-medium transition-colors hover:underline cursor-pointer"
+                          className="text-[11px] text-blue-400 hover:text-blue-300"
                         >
-                          {isAllGroupSelected ? 'Deselect Group' : 'Select Group'}
+                          {isAllGroupSelected ? 'Deselect' : 'Select'}
                         </button>
                       </div>
                     </div>
 
-                    {/* Criteria List for this Story */}
-                    <div className="divide-y divide-slate-800/60">
+                    <div className="divide-y divide-slate-800/70">
                       {group.criteria.map((crit) => {
                         const isChecked = selectedCriteriaIds.includes(crit.id);
                         const acCode = `AC-${crit.criteria_number < 10 ? `0${crit.criteria_number}` : crit.criteria_number}`;
-                        const cleanText = crit.text.replace(/^(?:AC-?[0-9]+[\s:-]*|[0-9]+[\.\)]\s*)+/i, '').trim();
+                        const cleanText = crit.text.replace(/^(?:AC-?[0-9]+[\s:-]*|[0-9]+[.)]\s*)+/i, '').trim();
 
                         return (
                           <div
                             key={crit.id}
                             id={`criteria-row-${crit.id}`}
                             onClick={() => handleToggleCriteria(crit.id)}
-                            className={`flex items-start space-x-3 p-3 cursor-pointer transition-all ${
+                            className={`flex items-start space-x-2.5 p-2.5 cursor-pointer text-xs transition-colors ${
                               isChecked
-                                ? 'bg-emerald-950/20 text-emerald-200'
-                                : 'bg-slate-950 text-slate-400 hover:bg-slate-900/50'
+                                ? 'bg-blue-950/20 text-slate-200'
+                                : 'hover:bg-slate-900/40 text-slate-400'
                             }`}
                           >
                             <input
@@ -708,20 +832,16 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
                                 e.stopPropagation();
                                 handleToggleCriteria(crit.id);
                               }}
-                              className="mt-0.5 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 shrink-0 h-4 w-4 cursor-pointer"
+                              className="mt-0.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer shrink-0"
                             />
-                            <div className="space-y-0.5 text-xs flex-1">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-bold text-emerald-400 font-mono text-xs px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-800/80">
-                                  {acCode}
-                                </span>
-                                <span className="text-[11px] text-slate-500 font-mono">
-                                  {crit.id}
-                                </span>
+                            <div className="flex-1 space-y-0.5">
+                              <div className="flex items-center space-x-2 font-mono text-[11px]">
+                                <span className="font-semibold text-blue-400">{acCode}</span>
+                                <span className="text-slate-500">{crit.id}</span>
                               </div>
-                              <span className="text-slate-200 leading-relaxed block mt-1">
+                              <p className="text-slate-300 leading-normal">
                                 {cleanText || crit.text}
-                              </span>
+                              </p>
                             </div>
                           </div>
                         );
@@ -734,107 +854,85 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
           )}
         </div>
 
-        {/* STEP 4: APPLICATION LINK (DEFAULT: https://www.amazon.in/) */}
-        <div className="space-y-3 pt-2 border-t border-slate-800/60">
+        {/* 4. APPLICATION LINKS */}
+        <div className="space-y-2 pt-3 border-t border-slate-800">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm">
-              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xs">
-                4
-              </div>
-              <Globe className="w-4 h-4 text-blue-400" />
-              <span>Application Link</span>
-            </div>
-            {selectedLinks.length > 0 && (
-              <span className="text-xs text-slate-400 font-medium">
-                {selectedLinks.length} link{selectedLinks.length > 1 ? 's' : ''} set
-              </span>
-            )}
+            <label className="text-xs font-semibold text-slate-200">Application Links</label>
+            <span className="text-[11px] text-slate-400">
+              {selectedLinks.length} configured
+            </span>
           </div>
 
-          {/* Validation Error Message for Link */}
           {linkValidationError && (
-            <div className="p-2.5 rounded-lg bg-red-950/50 border border-red-800/60 text-red-300 text-xs">
+            <div className="p-2 rounded bg-red-950/60 border border-red-800/60 text-red-300 text-xs">
               {linkValidationError}
             </div>
           )}
 
-          {/* Selected Links List */}
+          {/* Existing Links List */}
           {selectedLinks.length > 0 && (
-            <div className="border border-slate-800 rounded-lg divide-y divide-slate-800/60 bg-slate-950 overflow-hidden">
+            <div className="border border-slate-800 rounded divide-y divide-slate-800/80 bg-slate-950 overflow-hidden">
               {selectedLinks.map((link) => (
-                <div key={link.id} className="p-3">
+                <div key={link.id} className="p-2.5 text-xs">
                   {editingLinkId === link.id ? (
-                    /* EDIT MODE */
-                    <div className="space-y-2 bg-slate-900 p-3 rounded-lg border border-blue-500/40">
+                    <div className="space-y-2 bg-slate-900 p-2.5 rounded border border-blue-600/40">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[11px] text-slate-400 font-medium block mb-1">Link Name</label>
-                          <input
-                            type="text"
-                            value={editLinkName}
-                            onChange={(e) => setEditLinkName(e.target.value)}
-                            placeholder="e.g. Amazon Storefront"
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-100"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] text-slate-400 font-medium block mb-1">URL</label>
-                          <input
-                            type="text"
-                            value={editLinkUrl}
-                            onChange={(e) => setEditLinkUrl(e.target.value)}
-                            placeholder="https://www.amazon.in/"
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-100"
-                          />
-                        </div>
+                        <input
+                          type="text"
+                          value={editLinkName}
+                          onChange={(e) => setEditLinkName(e.target.value)}
+                          placeholder="Link Name"
+                          className="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-100"
+                        />
+                        <input
+                          type="text"
+                          value={editLinkUrl}
+                          onChange={(e) => setEditLinkUrl(e.target.value)}
+                          placeholder="https://example.com"
+                          className="bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-100"
+                        />
                       </div>
-
-                      <div className="flex items-center justify-end space-x-2 pt-1">
+                      <div className="flex justify-end space-x-2">
                         <button
                           type="button"
                           onClick={() => setEditingLinkId(null)}
-                          className="px-2.5 py-1 text-xs text-slate-400 hover:text-slate-200"
+                          className="px-2 py-1 text-xs text-slate-400 hover:text-white"
                         >
                           Cancel
                         </button>
                         <button
                           type="button"
                           onClick={() => handleSaveEditLink(link.id)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold"
+                          className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium"
                         >
-                          Save Changes
+                          Save
                         </button>
                       </div>
                     </div>
                   ) : (
-                    /* DISPLAY MODE */
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5 min-w-0 flex-1">
-                        <span className="font-semibold text-slate-200 text-xs truncate block">
-                          {link.name}
-                        </span>
-                        <div className="text-xs text-blue-400 truncate flex items-center space-x-1.5 font-mono">
-                          <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span className="truncate">{link.url}</span>
-                        </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="font-medium text-slate-200 shrink-0">{link.name}</span>
+                        <span className="text-slate-500">·</span>
+                        <span className="text-slate-400 font-mono truncate">{link.url}</span>
                       </div>
-
                       <div className="flex items-center space-x-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => handleStartEditLink(link)}
-                          className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors rounded hover:bg-slate-900"
-                          title="Edit link"
+                          className="p-1 text-slate-400 hover:text-slate-200"
+                          title="Edit"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRemoveLink(link.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded hover:bg-slate-900"
-                          title="Remove link"
+                          className="p-1 text-slate-400 hover:text-red-400"
+                          title="Delete"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -844,15 +942,15 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
             </div>
           )}
 
-          {/* Add New Link Control */}
-          <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
+          {/* Add Link Row */}
+          <div className="p-2.5 bg-slate-950 border border-slate-800 rounded space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 value={newLinkName}
                 onChange={(e) => setNewLinkName(e.target.value)}
                 placeholder="Link Name (e.g. Checkout Page)"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-blue-500"
               />
               <input
                 type="text"
@@ -865,13 +963,13 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
                   }
                 }}
                 placeholder="URL (e.g. https://www.amazon.in/)"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-blue-500 font-mono"
               />
             </div>
             <button
               type="button"
               onClick={handleAddCustomLink}
-              className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all"
+              className="bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 px-2.5 py-1 rounded text-xs font-medium flex items-center space-x-1 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Link</span>
@@ -879,12 +977,12 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmit, isLo
           </div>
         </div>
 
-        {/* STEP 5: GENERATE TEST CASES ACTION */}
+        {/* 5. GENERATE ACTION BUTTON */}
         <div className="pt-2">
           <button
             type="submit"
             disabled={isLoading || loadingAreas}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-md flex items-center justify-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm cursor-pointer"
           >
             {isLoading ? (
               <>

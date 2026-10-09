@@ -8,7 +8,11 @@ class ApplicationLinkPayload(BaseModel):
 
 class TestCase(BaseModel):
     __test__ = False
-    id: str = Field(..., description="Unique Test Case ID e.g., TC-POS-001")
+    id: str = Field(..., description="Unique Test Case ID e.g., TC-POS-001 or TC-1024-01")
+    azure_work_item_id: Optional[str] = Field(None, description="Associated Azure DevOps Work Item / User Story ID e.g. 1024")
+    azure_test_case_id: Optional[int] = Field(None, description="Synced Azure DevOps Test Case ID e.g. 45872")
+    sync_status: Optional[str] = Field("Not Synced", description="Not Synced, Synced, Updated, Sync Failed")
+    sync_message: Optional[str] = Field(None, description="Synchronization message or error details")
     requirement_ref: str = Field(..., description="Traceability Reference e.g. US-101 AC-1")
     user_story: Optional[str] = Field("", description="Associated User Story ID e.g. US-101")
     acceptance_criteria: Optional[str] = Field("", description="Associated Acceptance Criteria ID / text")

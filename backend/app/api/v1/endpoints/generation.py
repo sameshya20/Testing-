@@ -151,5 +151,54 @@ async def generate_test_cases(
         page_contexts=page_contexts
     )
 
+    # 6. Persist generated test cases and maintain traceability in database
+    try:
+        from app.models.test_case import TestCaseRecord
+        all_cases = response.positive_test_cases + response.negative_test_cases + response.edge_test_cases
+        for tc in all_cases:
+            rec = db.query(TestCaseRecord).filter(TestCaseRecord.id == tc.id).first()
+            steps_str = "\n".join(tc.test_steps) if isinstance(tc.test_steps, list) else str(tc.test_steps)
+            if not rec:
+                rec = TestCaseRecord(
+                    id=tc.id,
+                    azure_work_item_id=str(tc.azure_work_item_id or tc.user_story or ""),
+                    azure_test_case_id=tc.azure_test_case_id,
+                    application_id=payload.application_id,
+                    category=tc.category,
+                    priority=tc.priority,
+                    scenario=tc.scenario,
+                    description=tc.description,
+                    preconditions=tc.preconditions,
+                    test_data=tc.test_data,
+                    test_steps=steps_str,
+                    expected_result=tc.expected_result,
+                    requirement_ref=tc.requirement_ref,
+                    application_page=tc.application_page,
+                    application_link=tc.application_link,
+                    sync_status="Not Synced",
+                    sync_message=""
+                )
+                db.add(rec)
+            else:
+                if rec.azure_test_case_id:
+                    tc.azure_test_case_id = rec.azure_test_case_id
+                    tc.sync_status = rec.sync_status
+                    tc.sync_message = rec.sync_message
+                rec.azure_work_item_id = str(tc.azure_work_item_id or rec.azure_work_item_id or "")
+                rec.category = tc.category
+                rec.priority = tc.priority
+                rec.scenario = tc.scenario
+                rec.description = tc.description
+                rec.preconditions = tc.preconditions
+                rec.test_data = tc.test_data
+                rec.test_steps = steps_str
+                rec.expected_result = tc.expected_result
+                rec.requirement_ref = tc.requirement_ref
+                rec.application_page = tc.application_page
+                rec.application_link = tc.application_link
+        db.commit()
+    except Exception as db_err:
+        pass
+
     return response
 

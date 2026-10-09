@@ -305,6 +305,144 @@ export async function generateTestCases(
   return response.json();
 }
 
+// ============================================================================
+// AZURE DEVOPS REAL INTEGRATION API CLIENT
+// ============================================================================
+
+export async function fetchAzureDevOpsConfig(): Promise<import('../types').AzureDevOpsConfigResponse> {
+  const response = await fetch(`${API_BASE_URL}/devops/azure/config`, {
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    throw new Error('Unable to check Azure DevOps configuration status.');
+  }
+  return response.json();
+}
+
+export async function connectAzureDevOps(
+  req: import('../types').AzureDevOpsConnectRequest
+): Promise<import('../types').AzureDevOpsConnectResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/devops/azure/connect`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(req)
+    });
+  } catch (err) {
+    throw new Error('Unable to connect to Azure DevOps. Please check network connection.');
+  }
+
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: 'Failed to connect to Azure DevOps.' }));
+    throw new Error(errData.detail || 'Failed to connect to Azure DevOps.');
+  }
+  return response.json();
+}
+
+export async function disconnectAzureDevOps(): Promise<{ connected: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/devops/azure/disconnect`, {
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  return response.json();
+}
+
+export async function fetchAzureDevOpsProjects(): Promise<import('../types').AzureDevOpsProjectItem[]> {
+  const response = await fetch(`${API_BASE_URL}/devops/azure/projects`, {
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    throw new Error('Unable to load Azure DevOps projects.');
+  }
+  return response.json();
+}
+
+export async function fetchAzureDevOpsAreas(project?: string): Promise<import('../types').Area[]> {
+  const url = project
+    ? `${API_BASE_URL}/devops/azure/areas?project=${encodeURIComponent(project)}`
+    : `${API_BASE_URL}/devops/azure/areas`;
+  const response = await fetch(url, {
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    throw new Error('Unable to load Azure DevOps areas.');
+  }
+  return response.json();
+}
+
+export async function fetchAzureDevOpsWorkItems(
+  areaPath?: string,
+  project?: string
+): Promise<import('../types').DevOpsWorkItem[]> {
+  const params = new URLSearchParams();
+  if (areaPath) params.append('area_path', areaPath);
+  if (project) params.append('project', project);
+
+  const url = `${API_BASE_URL}/devops/azure/work-items${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url, {
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    throw new Error('Unable to load Azure DevOps work items.');
+  }
+  return response.json();
+}
+
+export async function fetchAzureDevOpsWorkItem(
+  id: string,
+  project?: string
+): Promise<import('../types').DevOpsWorkItem> {
+  const url = project
+    ? `${API_BASE_URL}/devops/azure/work-items/${encodeURIComponent(id)}?project=${encodeURIComponent(project)}`
+    : `${API_BASE_URL}/devops/azure/work-items/${encodeURIComponent(id)}`;
+  const response = await fetch(url, {
+    headers: getAuthHeaders()
+  });
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    throw new Error('Unable to retrieve story details from Azure DevOps.');
+  }
+  return response.json();
+}
+
+export async function syncTestCasesToAzureDevOps(
+  testCases: import('../types').TestCase[],
+  workItemId?: string,
+  areaPath?: string,
+  project?: string
+): Promise<import('../types').AzureDevOpsSyncResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/devops/azure/sync`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        test_cases: testCases,
+        work_item_id: workItemId,
+        area_path: areaPath,
+        project: project
+      })
+    });
+  } catch (err) {
+    throw new Error('Unable to sync test cases to Azure DevOps. Please check network connection.');
+  }
+
+  await handleResponseStatus(response);
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({ detail: 'Failed to sync test cases to Azure DevOps.' }));
+    throw new Error(errData.detail || 'Failed to sync test cases to Azure DevOps.');
+  }
+
+  return response.json();
+}
+
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';

@@ -122,33 +122,19 @@ class AzureDevOpsService:
                     assigned_to=story_db.assigned_to or "QA Team"
                 )
 
-        # Check mock dataset first if PAT is not configured or ID matches mock pattern
+        # Attempt Azure DevOps service (Mock or Real)
+        try:
+            from app.services.azure_devops import azure_devops_service
+            ado_item = await azure_devops_service.get_single_work_item(work_item_id)
+            if ado_item:
+                return ado_item
+        except Exception:
+            pass
+
+        # Check mock dataset if not found in live ADO or if matching mock pattern
         for mock_item in MOCK_WORK_ITEMS:
             if mock_item.id.upper() == clean_id or mock_item.id.upper() == f"US-{clean_id}":
                 return mock_item
-
-        # Attempt live Azure DevOps API call if credentials exist
-        if self.pat and self.org and self.project:
-            try:
-                numeric_id = ''.join(filter(str.isdigit, work_item_id))
-                if numeric_id:
-                    url = f"{self.base_url}/wit/workitems/{numeric_id}?api-version=7.0"
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        response = await client.get(url, headers=self._get_headers())
-                        if response.status_code == 200:
-                            data = response.json()
-                            fields = data.get("fields", {})
-                            return DevOpsWorkItem(
-                                id=str(data.get("id")),
-                                title=fields.get("System.Title", "Work Item Title"),
-                                work_item_type=fields.get("System.WorkItemType", "User Story"),
-                                description=fields.get("System.Description", ""),
-                                acceptance_criteria=fields.get("Microsoft.VSTS.Common.AcceptanceCriteria", fields.get("System.Description", "")),
-                                state=fields.get("System.State", "Active"),
-                                assigned_to=fields.get("System.AssignedTo", {}).get("displayName", "Unassigned")
-                            )
-            except Exception:
-                pass # Fall through to intelligent fallback generator below
 
         # Default fallback for unknown work item IDs
         return DevOpsWorkItem(

@@ -980,13 +980,30 @@ class TestGeneratorEngine:
         negative_cases = deduplication_service.deduplicate(negative_cases)
         edge_cases = deduplication_service.deduplicate(edge_cases)
 
-        # Re-assign sequential IDs
-        for i, tc in enumerate(positive_cases, 1):
-            tc.id = f"TC-POS-{i:03d}"
-        for i, tc in enumerate(negative_cases, 1):
-            tc.id = f"TC-NEG-{i:03d}"
-        for i, tc in enumerate(edge_cases, 1):
-            tc.id = f"TC-EDG-{i:03d}"
+        # Re-assign sequential IDs with complete traceability to Azure DevOps User Stories
+        # Example: Story #1024 -> TC-1024-01, TC-1024-02, TC-1024-03
+        story_counters: Dict[str, int] = {}
+        for tc in positive_cases + negative_cases + edge_cases:
+            target_story = tc.user_story or (stories[0].id if stories else "")
+            clean_digits = ''.join(filter(str.isdigit, str(target_story))) if target_story else ""
+            if clean_digits:
+                tc.azure_work_item_id = clean_digits
+                idx = story_counters.get(clean_digits, 0) + 1
+                story_counters[clean_digits] = idx
+                tc.id = f"TC-{clean_digits}-{idx:02d}"
+            else:
+                clean_ref = re.sub(r'^[#\s]+', '', str(target_story)).strip() if target_story else ""
+                if clean_ref:
+                    tc.azure_work_item_id = clean_ref
+                    idx = story_counters.get(clean_ref, 0) + 1
+                    story_counters[clean_ref] = idx
+                    tc.id = f"TC-{clean_ref}-{idx:02d}"
+                else:
+                    cat_prefix = tc.category[:3].upper() if tc.category else "GEN"
+                    idx = story_counters.get(cat_prefix, 0) + 1
+                    story_counters[cat_prefix] = idx
+                    tc.id = f"TC-{cat_prefix}-{idx:03d}"
+            tc.sync_status = "Not Synced"
 
         if evaluated_story_ids:
             covered_story_ids = [s.id for s in stories if s.id in evaluated_story_ids]

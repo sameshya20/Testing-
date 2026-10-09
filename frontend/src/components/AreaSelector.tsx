@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Area } from '../types';
-import { ChevronRight, ChevronDown, Layers, Folder, FolderOpen, Check, X, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, X } from 'lucide-react';
 
 interface AreaTreeNode {
   area: Area;
@@ -26,7 +26,6 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
   onSelectAreas,
   isLoading = false
 }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(true);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Record<number, boolean>>({});
 
   // Compute normalized effective selected area IDs list
@@ -84,22 +83,9 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
     return buildNodes(null, 0);
   }, [areas, getAreaPath]);
 
-  // Automatically expand parent nodes on initial load
-  useEffect(() => {
-    if (areas.length > 0) {
-      const defaultExpanded: Record<number, boolean> = {};
-      areas.forEach(a => {
-        if (!a.parent_id || areas.some(child => child.parent_id === a.id)) {
-          defaultExpanded[a.id] = true;
-        }
-      });
-      setExpandedNodeIds(defaultExpanded);
-    }
-  }, [areas]);
-
   const toggleExpand = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    setExpandedNodeIds(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedNodeIds(prev => ({ ...prev, [id]: !(prev[id] ?? true) }));
   };
 
   const handleToggleArea = (areaId: number) => {
@@ -141,26 +127,25 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
 
   const renderTreeNode = (node: AreaTreeNode) => {
     const hasChildren = node.children.length > 0;
-    const isExpanded = !!expandedNodeIds[node.area.id];
+    const isExpanded = expandedNodeIds[node.area.id] ?? true;
     const isSelected = selectedAreaIds.includes(node.area.id);
 
     return (
       <div key={node.area.id} className="select-none">
         <div
           onClick={() => handleToggleArea(node.area.id)}
-          className={`flex items-center space-x-2 py-1.5 px-2.5 rounded-lg text-xs cursor-pointer transition-colors ${
+          className={`flex items-center space-x-2 py-1 px-2 rounded text-xs cursor-pointer transition-colors ${
             isSelected
-              ? 'bg-blue-900/60 border border-blue-500/80 text-blue-100 font-semibold shadow-sm'
-              : 'hover:bg-slate-800/70 text-slate-300'
+              ? 'bg-blue-950/60 text-blue-200 font-medium border border-blue-800/60'
+              : 'hover:bg-slate-800/60 text-slate-300'
           }`}
-          style={{ paddingLeft: `${node.depth * 1.25 + 0.5}rem` }}
+          style={{ paddingLeft: `${node.depth * 1 + 0.35}rem` }}
         >
           {hasChildren ? (
             <button
               type="button"
               onClick={(e) => toggleExpand(e, node.area.id)}
               className="p-0.5 hover:bg-slate-700/60 rounded text-slate-400 hover:text-slate-200 transition-colors"
-              title={isExpanded ? "Collapse" : "Expand"}
             >
               {isExpanded ? (
                 <ChevronDown className="w-3.5 h-3.5 text-blue-400" />
@@ -169,38 +154,29 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
               )}
             </button>
           ) : (
-            <span className="w-4 h-4 inline-flex items-center justify-center text-slate-500 font-mono text-[10px]">
-              ○
-            </span>
+            <span className="w-3.5 inline-block" />
           )}
 
           {hasChildren ? (
             isExpanded ? (
-              <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <FolderOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             ) : (
-              <Folder className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+              <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             )
           ) : null}
 
-          <span className="truncate flex-1 font-medium">{node.area.name}</span>
+          <span className="truncate flex-1">{node.area.name}</span>
 
-          <div className="flex items-center space-x-1 shrink-0">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => {}} // Handled by parent click
-              className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-blue-500 h-3.5 w-3.5"
-            />
-            {isSelected && (
-              <span className="flex items-center space-x-1 text-[11px] text-blue-400 font-bold ml-1">
-                <Check className="w-3.5 h-3.5 text-blue-400 stroke-[3]" />
-              </span>
-            )}
-          </div>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => {}}
+            className="rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
+          />
         </div>
 
         {hasChildren && isExpanded && (
-          <div className="border-l border-slate-800/80 ml-4 pl-1 space-y-0.5">
+          <div className="border-l border-slate-800/80 ml-3 pl-1 space-y-0.5">
             {node.children.map(child => renderTreeNode(child))}
           </div>
         )}
@@ -209,147 +185,65 @@ export const AreaSelector: React.FC<AreaSelectorProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header Label */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2 text-slate-200 font-semibold text-sm">
-          <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xs font-bold">
-            1
-          </div>
-          <Layers className="w-4 h-4 text-blue-400" />
+        <label className="text-xs font-semibold text-slate-200 flex items-center space-x-1.5">
           <span>Area Selection</span>
-        </div>
+          {selectedAreaIds.length > 0 && (
+            <span className="text-[11px] font-normal text-slate-400">
+              ({selectedAreaIds.length} selected)
+            </span>
+          )}
+        </label>
 
         {selectedAreaIds.length > 0 && (
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-blue-400 font-mono font-medium">
-              {selectedAreaIds.length} Area{selectedAreaIds.length > 1 ? 's' : ''} Selected
-            </span>
-            {selectedAreaIds.length > 1 && (
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="text-[11px] text-slate-400 hover:text-red-400 font-medium transition-colors flex items-center space-x-1"
-                title="Clear all selected areas"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Clear All</span>
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="text-[11px] text-slate-400 hover:text-red-400 transition-colors"
+          >
+            Clear Selection
+          </button>
         )}
       </div>
 
-      {/* Selector Trigger Box */}
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-slate-950 border rounded-xl px-4 py-3 cursor-pointer flex items-center justify-between transition-all ${
-          isOpen ? 'border-blue-500 shadow-md ring-1 ring-blue-500/30' : 'border-slate-800 hover:border-slate-700'
-        }`}
-      >
-        <div className="min-w-0 flex-1">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-            Selected Area(s)
-          </span>
-          {selectedAreaIds.length === 0 ? (
-            <div className="text-sm font-medium text-slate-400 truncate mt-0.5">
-              Select an area
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5 mt-1.5 max-h-24 overflow-y-auto pr-1">
-              {selectedAreaIds.map(id => (
-                <span
-                  key={id}
-                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-blue-950/80 border border-blue-700/80 text-blue-200 text-xs font-mono font-medium shadow-sm"
-                >
-                  <span>{getAreaPath(id) || `Area #${id}`}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleRemoveArea(e, id)}
-                    className="p-0.5 hover:bg-blue-800/80 rounded text-blue-300 hover:text-red-300 transition-colors"
-                    title="Remove area"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-2 shrink-0 ml-3 self-start mt-1">
-          <span className="text-xs text-blue-400 hover:underline font-medium">
-            {isOpen ? 'Collapse' : 'Expand'}
-          </span>
-          {isOpen ? (
-            <ChevronDown className="w-4 h-4 text-blue-400" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          )}
-        </div>
-      </div>
-
-      {/* Selected Area Paths Detail List */}
+      {/* Selected chips bar (if any) */}
       {selectedAreaIds.length > 0 && (
-        <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl space-y-2">
-          <div className="flex items-center justify-between border-b border-blue-900/60 pb-1.5">
-            <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">
-              Selected Areas ({selectedAreaIds.length}):
-            </span>
-            <button
-              type="button"
-              onClick={handleClearAll}
-              className="text-[11px] text-slate-400 hover:text-red-400 font-medium transition-colors"
+        <div className="flex flex-wrap gap-1.5 p-2 bg-slate-950 border border-slate-800 rounded">
+          {selectedAreaIds.map(id => (
+            <span
+              key={id}
+              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-blue-950/70 border border-blue-800/60 text-blue-200 text-xs font-mono"
             >
-              Clear All
-            </button>
-          </div>
-          <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-            {selectedAreaIds.map(id => (
-              <div
-                key={id}
-                className="text-xs font-bold text-slate-100 font-mono tracking-wide flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
+              <span className="truncate max-w-xs">{getAreaPath(id) || `Area #${id}`}</span>
+              <button
+                type="button"
+                onClick={(e) => handleRemoveArea(e, id)}
+                className="hover:text-red-300 text-blue-300 ml-1"
+                title="Remove"
               >
-                <div className="flex items-center space-x-1.5 truncate mr-2">
-                  <span className="text-blue-400">▼</span>
-                  <span className="truncate">{getAreaPath(id) || `Area #${id}`}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => handleRemoveArea(e, id)}
-                  className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors shrink-0"
-                  title="Remove this area"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
       {/* Hierarchical Area Tree Panel */}
-      {isOpen && (
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-72 overflow-y-auto space-y-1 shadow-inner">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-2.5 pb-2 border-b border-slate-800/60 mb-2 flex items-center justify-between">
-            <span>Application Areas</span>
-            <span className="text-[10px] text-slate-500 font-normal">Select one or more areas</span>
+      <div className="bg-slate-950 border border-slate-800 rounded p-2.5 max-h-56 overflow-y-auto space-y-0.5">
+        {isLoading ? (
+          <div className="py-4 text-center text-xs text-slate-400">
+            Loading areas...
           </div>
-
-          {isLoading ? (
-            <div className="py-6 text-center text-xs text-slate-400 italic">
-              Loading areas...
-            </div>
-          ) : treeNodes.length === 0 ? (
-            <div className="py-6 text-center text-xs text-slate-400 italic">
-              No areas available.
-            </div>
-          ) : (
-            treeNodes.map(node => renderTreeNode(node))
-          )}
-        </div>
-      )}
+        ) : treeNodes.length === 0 ? (
+          <div className="py-4 text-center text-xs text-slate-500">
+            No areas available
+          </div>
+        ) : (
+          treeNodes.map(node => renderTreeNode(node))
+        )}
+      </div>
     </div>
   );
 };
-

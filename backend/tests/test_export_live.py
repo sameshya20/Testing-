@@ -1,7 +1,15 @@
+import pytest
 import requests
 import io
 import openpyxl
 
+try:
+    requests.get('http://127.0.0.1:8000/docs', timeout=0.2)
+    server_running = True
+except Exception:
+    server_running = False
+
+@pytest.mark.skipif(not server_running, reason="Live dev server on http://127.0.0.1:8000 is not running")
 def test_live_export():
     login_res = requests.post(
         'http://127.0.0.1:8000/api/v1/auth/login',

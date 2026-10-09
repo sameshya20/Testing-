@@ -8,9 +8,23 @@ class Settings:
     API_V1_STR: str = "/api/v1"
     
     # Azure DevOps Configuration
-    ADO_ORGANIZATION: str = os.getenv("ADO_ORGANIZATION", "EnterpriseOrg")
-    ADO_PROJECT: str = os.getenv("ADO_PROJECT", "QualityAssurance")
-    ADO_PAT: str = os.getenv("ADO_PAT", "")
+    AZURE_DEVOPS_MODE: str = (os.getenv("AZURE_DEVOPS_MODE") or "mock").lower().strip()
+    AZURE_DEVOPS_ORG: str = os.getenv("AZURE_DEVOPS_ORG") or os.getenv("ADO_ORGANIZATION", "DemoOrganization")
+    AZURE_DEVOPS_PROJECT: str = os.getenv("AZURE_DEVOPS_PROJECT") or os.getenv("ADO_PROJECT", "TestCaseDemoProject")
+    AZURE_DEVOPS_PAT: str = os.getenv("AZURE_DEVOPS_PAT") or os.getenv("ADO_PAT", "")
+    
+    # Backward compatibility aliases
+    @property
+    def ADO_ORGANIZATION(self) -> str:
+        return self.AZURE_DEVOPS_ORG
+
+    @property
+    def ADO_PROJECT(self) -> str:
+        return self.AZURE_DEVOPS_PROJECT
+
+    @property
+    def ADO_PAT(self) -> str:
+        return self.AZURE_DEVOPS_PAT
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./test_generator.db")

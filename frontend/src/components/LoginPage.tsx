@@ -21,7 +21,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
 
     try {
-      setIsLoading(false);
       setIsLoading(true);
       setErrorMsg(null);
 
@@ -36,75 +35,74 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
+      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-lg p-6 shadow-xl space-y-5">
         
-        {/* Header Branding */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 shadow-lg mb-2">
-            <Layers className="w-6 h-6 text-white" />
+        {/* Header Branding - Clean, no definitions or subtitles underneath */}
+        <div className="space-y-3 text-center">
+          <div className="inline-flex items-center justify-center w-9 h-9 rounded-md bg-blue-600 shadow-xs">
+            <Layers className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Test Case Generator
-          </h1>
-          <p className="text-slate-400 text-sm font-medium">
-            Welcome Back
-          </p>
+          <div>
+            <h1 className="text-lg font-semibold text-white tracking-tight">
+              Test Case Generator
+            </h1>
+          </div>
         </div>
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-800/60 flex items-center space-x-3 text-red-300 text-sm">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <div className="p-3 rounded-md bg-red-950/60 border border-red-800/60 flex items-center space-x-2 text-red-300 text-xs">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Username / Email
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Email Address
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@enterprise.com"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                className="w-full bg-slate-950 border border-slate-700 rounded pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-medium text-slate-300 mb-1">
               Password
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                className="w-full bg-slate-950 border border-slate-700 rounded pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-1">
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-3 rounded text-xs transition-colors flex items-center justify-center space-x-1.5 disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>Signing In...</span>
                 </>
               ) : (
@@ -116,13 +114,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         </form>
 
         {/* Footer Link */}
-        <div className="text-center pt-2">
+        <div className="text-center pt-1 border-t border-slate-800">
           <button
             type="button"
-            onClick={() => alert("Please contact your administrator to reset your password.")}
-            className="text-xs text-slate-400 hover:text-blue-400 transition-colors"
+            onClick={() => alert("Please contact your QA administrator to reset your password.")}
+            className="text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
           >
-            Forgot Password
+            Forgot password?
           </button>
         </div>
 

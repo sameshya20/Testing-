@@ -15,8 +15,7 @@ import {
   Copy,
   Check,
   Filter,
-  Loader2,
-  ShieldCheck
+  Loader2
 } from 'lucide-react';
 
 interface ExcelPreviewModalProps {
@@ -52,8 +51,6 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
   const [isLoadingWorkbook, setIsLoadingWorkbook] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  // Step 7 requirement: For "View Excel Sheets", verify the frontend receives the correct XLSX binary
-  // and parse workbook sheets (Positive, Negative, Edge) using SheetJS/xlsx
   useEffect(() => {
     if (!isOpen) {
       setParsedData(null);
@@ -76,7 +73,7 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
         if (isMounted) {
           setParsedData(result);
         }
-      } catch (err: any) {
+      } catch {
         if (isMounted) {
           setParseError('Unable to open the Excel file. Please try downloading it again.');
         }
@@ -94,7 +91,6 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
   }, [isOpen, positiveCases, negativeCases, edgeCases, appName, reqRef]);
 
   if (!isOpen) return null;
-
 
   interface DisplayRow {
     id: string;
@@ -150,7 +146,6 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
       }
     }
 
-    // Fallback to React state test cases if parsedData not yet ready
     const fallbackList =
       activeSheet === 'Positive' ? positiveCases :
       activeSheet === 'Negative' ? negativeCases :
@@ -233,141 +228,125 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
 
     navigator.clipboard.writeText(tsvContent).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setTimeout(() => setCopied(false), 2000);
     });
   };
 
   const totalCount = positiveCases.length + negativeCases.length + edgeCases.length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-[95vw] h-[90vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-xs">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-2xl w-full max-w-[95vw] h-[90vh] flex flex-col overflow-hidden">
         
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-4">
+        <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
+            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="text-lg font-bold text-white tracking-tight">Excel Preview</h3>
-                <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                  {parsedData?.fileName || fileName}
+                <span className="text-sm font-semibold text-white">Excel Preview</span>
+                <span className="font-mono text-xs text-slate-400">
+                  ({parsedData?.fileName || fileName})
                 </span>
-                {parsedData ? (
-                  <span className="hidden sm:inline-flex items-center space-x-1 font-mono text-[11px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60">
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                    <span>Excel File Ready</span>
-                  </span>
-                ) : isLoadingWorkbook ? (
-                  <span className="hidden sm:inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-700/60">
-                    <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
-                    <span>Loading test cases...</span>
-                  </span>
-                ) : parseError ? (
-                  <span className="hidden sm:inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-700/60">
-                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                    <span>Unable to load test cases</span>
-                  </span>
-                ) : null}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {totalCount} Total Test Cases &bull; Positive, Negative, Edge
-              </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2.5">
+          <div className="flex items-center space-x-2">
             <button
+              type="button"
               onClick={handleCopyTsv}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
-              title="Copy test cases to clipboard"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-              <span>{copied ? 'Copied!' : 'Copy Table'}</span>
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
 
             <button
+              type="button"
               onClick={onExportExcel}
               disabled={isExporting}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+              className="flex items-center space-x-1.5 px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{isExporting ? 'Downloading...' : 'Download Excel'}</span>
             </button>
 
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-2"
+              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
               title="Close"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-
         {/* Toolbar & Sheet Tabs */}
-        <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-3">
-          {/* Excel-style Sheet Tabs */}
-          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <div className="px-5 py-2.5 border-b border-slate-800 bg-slate-900 flex flex-wrap items-center justify-between gap-2.5">
+          {/* Sheet Tabs */}
+          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded border border-slate-800">
             <button
+              type="button"
               onClick={() => setActiveSheet('Positive')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                 activeSheet === 'Positive'
-                  ? 'bg-emerald-600/25 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  ? 'bg-slate-800 text-emerald-300'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
               <span>Positive</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 text-[10px] font-bold">
+              <span className="font-mono text-[10px] text-slate-400 ml-1">
                 {positiveCases.length}
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveSheet('Negative')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                 activeSheet === 'Negative'
-                  ? 'bg-amber-600/25 text-amber-400 border border-amber-500/40 shadow-sm'
+                  ? 'bg-slate-800 text-amber-300'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <XCircle className="w-3.5 h-3.5 text-amber-400" />
+              <XCircle className="w-3 h-3 text-amber-400" />
               <span>Negative</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 text-[10px] font-bold">
+              <span className="font-mono text-[10px] text-slate-400 ml-1">
                 {negativeCases.length}
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveSheet('Edge')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                 activeSheet === 'Edge'
-                  ? 'bg-purple-600/25 text-purple-400 border border-purple-500/40 shadow-sm'
+                  ? 'bg-slate-800 text-purple-300'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-purple-400" />
+              <AlertTriangle className="w-3 h-3 text-purple-400" />
               <span>Edge</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 text-[10px] font-bold">
+              <span className="font-mono text-[10px] text-slate-400 ml-1">
                 {edgeCases.length}
               </span>
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveSheet('All')}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                 activeSheet === 'All'
-                  ? 'bg-blue-600/25 text-blue-400 border border-blue-500/40 shadow-sm'
+                  ? 'bg-slate-800 text-blue-300'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+              <FileSpreadsheet className="w-3 h-3 text-blue-400" />
               <span>All</span>
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-300 text-[10px] font-bold">
+              <span className="font-mono text-[10px] text-slate-400 ml-1">
                 {totalCount}
               </span>
             </button>
@@ -381,17 +360,17 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search test cases..."
-                className="pl-8 pr-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-48 sm:w-64"
+                placeholder="Search..."
+                className="pl-8 pr-2.5 py-1 text-xs bg-slate-950 border border-slate-700 rounded text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-44 sm:w-56"
               />
             </div>
 
-            <div className="flex items-center space-x-1 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5">
+            <div className="flex items-center space-x-1 bg-slate-950 border border-slate-700 rounded px-2 py-1">
               <Filter className="w-3 h-3 text-slate-500" />
               <select
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs text-slate-300 focus:outline-none cursor-pointer"
               >
                 <option value="ALL">All Priorities</option>
                 <option value="HIGH">High</option>
@@ -406,39 +385,36 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
         <div className="flex-1 overflow-auto bg-slate-950">
           <table className="w-full text-left border-collapse text-xs">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-900 border-b border-slate-700 text-slate-300 uppercase tracking-wider font-semibold">
-                <th className="py-2.5 px-3 border-r border-slate-800 text-center w-10">#</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 w-28">Test Case ID</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 w-28">User Story</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 w-36">Acceptance Criteria</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 w-32">App Page</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 min-w-[200px]">Test Scenario</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 min-w-[180px]">Preconditions</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 min-w-[160px]">Test Data</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 min-w-[220px]">Test Steps</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 min-w-[220px]">Expected Result</th>
-                <th className="py-2.5 px-3 border-r border-slate-800 text-center w-20">Priority</th>
-                <th className="py-2.5 px-3 text-center w-20">Category</th>
+              <tr className="bg-slate-900 border-b border-slate-700 text-slate-300 uppercase tracking-wider font-semibold text-[11px]">
+                <th className="py-2 px-2.5 border-r border-slate-800 text-center w-8">#</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 w-24">ID</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 w-24">Story</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 w-32">Criteria</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 w-28">Page</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 min-w-[180px]">Scenario</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 min-w-[150px]">Preconditions</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 min-w-[130px]">Test Data</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 min-w-[180px]">Steps</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 min-w-[180px]">Expected Result</th>
+                <th className="py-2 px-2.5 border-r border-slate-800 text-center w-16">Priority</th>
+                <th className="py-2 px-2.5 text-center w-16">Category</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 text-slate-200">
+            <tbody className="divide-y divide-slate-800 text-slate-200">
               {isLoadingWorkbook && filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-16 text-slate-400">
-                    <div className="flex flex-col items-center justify-center space-y-3">
-                      <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
-                      <span className="text-sm font-medium">Loading test cases...</span>
+                  <td colSpan={12} className="text-center py-12 text-slate-400">
+                    <div className="flex items-center justify-center space-x-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                      <span>Loading test cases...</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-12 text-slate-500">
+                  <td colSpan={12} className="text-center py-10 text-slate-500">
                     {parseError ? (
-                      <div className="flex flex-col items-center space-y-2 text-red-400">
-                        <AlertTriangle className="w-5 h-5 text-red-400" />
-                        <span>{parseError}</span>
-                      </div>
+                      <span className="text-red-400">{parseError}</span>
                     ) : (
                       'No matching test cases found.'
                     )}
@@ -447,59 +423,43 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
               ) : (
                 filteredRows.map((row, idx) => (
                   <tr key={row.id + '-' + idx} className="hover:bg-slate-900/60 transition-colors">
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-center text-slate-500 font-mono">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-center text-slate-500 font-mono text-[11px]">
                       {idx + 1}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 font-mono font-bold text-blue-400">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 font-mono font-medium text-blue-400">
                       {row.id}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 font-mono text-slate-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 font-mono text-slate-400">
                       {row.user_story || 'US-101'}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-slate-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-300">
                       {row.acceptance_criteria}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-purple-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-400">
                       {row.application_page || 'N/A'}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 font-medium text-slate-100">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-200">
                       {row.scenario}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-slate-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-400">
                       {row.preconditions || 'N/A'}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 font-mono text-slate-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 font-mono text-slate-400 text-[11px]">
                       {row.test_data || 'N/A'}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-slate-300 whitespace-pre-line">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-300 whitespace-pre-line text-[11px]">
                       {row.test_steps}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-slate-300">
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-slate-300">
                       {row.expected_result}
                     </td>
-                    <td className="py-2 px-3 border-r border-slate-800/80 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          row.priority.toUpperCase() === 'HIGH'
-                            ? 'bg-red-950 text-red-300 border border-red-800/50'
-                            : row.priority.toUpperCase() === 'MEDIUM'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-800/50'
-                            : 'bg-blue-950 text-blue-300 border border-blue-800/50'
-                        }`}
-                      >
+                    <td className="py-1.5 px-2.5 border-r border-slate-800 text-center">
+                      <span className="text-[11px] text-slate-300 font-medium">
                         {row.priority}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          row.category === 'Positive'
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50'
-                            : row.category === 'Negative'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-800/50'
-                            : 'bg-purple-950 text-purple-300 border border-purple-800/50'
-                        }`}
-                      >
+                    <td className="py-1.5 px-2.5 text-center">
+                      <span className="text-[11px] text-slate-300 font-medium">
                         {row.category}
                       </span>
                     </td>
@@ -511,22 +471,17 @@ export const ExcelPreviewModal: React.FC<ExcelPreviewModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center space-x-4">
-            <span>Showing <strong className="text-white">{filteredRows.length}</strong> of <strong className="text-white">{currentDisplayRows.length}</strong> test cases</span>
-            <span>&bull;</span>
-            <span className="text-slate-400">
-              Excel Format
-            </span>
+        <div className="px-5 py-2.5 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400">
+          <div>
+            Showing <strong className="text-white">{filteredRows.length}</strong> of <strong className="text-white">{currentDisplayRows.length}</strong> test cases
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onClose}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+          >
+            Close
+          </button>
         </div>
 
       </div>
